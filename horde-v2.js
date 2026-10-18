@@ -10,12 +10,11 @@
   const COLS = 40, ROWS = 28, CELL = 24, N = COLS * ROWS;
   const W = COLS * CELL, H = ROWS * CELL;
 
-  const BASE_MONEY = 150;
-  const MONEY_PER_LEVEL = 50;
-  const levelStartMoney = lvl => BASE_MONEY + MONEY_PER_LEVEL * lvl; // money resets to this each level
-  const TOWER_COST = 50;
-  const SELL_REFUND = 25;
-  const KILL_REWARD = 10;
+  const BASE_TOWER_COST = 50;
+  const TOWER_COST_PER_LEVEL = 20;
+  const SELL_MIN_HEALTH = 0.8; // towers can only be sold at >= 80% health
+  const towerCost = (lvl = S.level) => BASE_TOWER_COST + TOWER_COST_PER_LEVEL * (lvl - 1);
+  const levelStartMoney = lvl => towerCost(lvl) * (lvl + 1); // exactly (level + 1) towers
   const START_LIVES = 20;
   const LEVEL_GOAL = 1000;          // target = level * LEVEL_GOAL
   const MAX_ENEMIES = 450;
@@ -23,15 +22,29 @@
 
   const TOWER = { range: 3.6, damage: 10, fireRate: 2.2, hp: 150, bulletSpeed: 12 };
 
-  // 5 enemy tiers: small = fast & fragile, large = slow, tough & hits towers hard.
-  // Every enemy is worth KILL_REWARD. Radius must stay < 0.5 (spatial hash assumption).
-  const ENEMY_TIERS = [
-    { r: 0.20, speed: 3.0,  hp: 10,  dps: 4,  color: '#f7e05a', rim: '#7a6a10', weight: 30 },
-    { r: 0.26, speed: 2.3,  hp: 20,  dps: 8,  color: '#f39c34', rim: '#7a4710', weight: 30 },
-    { r: 0.32, speed: 1.7,  hp: 36,  dps: 14, color: '#e0564a', rim: '#7a231c', weight: 22 },
-    { r: 0.39, speed: 1.25, hp: 65,  dps: 24, color: '#b04ad8', rim: '#55206e', weight: 12 },
-    { r: 0.46, speed: 0.95, hp: 120, dps: 40, color: '#4a4fd8', rim: '#1f2266', weight: 6 },
+  // Enemy types. The first 5 are size tiers: small = fast & fragile, large = slow, tough & hits
+  // towers hard. The gunner shoots at towers in range like a tower does, at half the fire rate.
+  // reward = money per kill. Radius must stay < 0.5 (spatial hash assumption).
+  // weight = base spawn weight, grow = how much faster that weight grows per level.
+  // hpGrowth = HP multiplier applied per level.
+  // HP grows exponentially with size: HP_BASE * HP_FACTOR^tier -> 15, 33, 73, 160, 351
+  const HP_BASE = 15, HP_FACTOR = 2.2;
+  const sizeHp = tier => Math.round(HP_BASE * HP_FACTOR ** tier);
+  const ENEMY_TYPES = [
+    { name: 'Tiny',    r: 0.20, speed: 3.0,  hp: sizeHp(0), dps: 4,  reward: 5,  color: '#f7e05a', rim: '#7a6a10', weight: 30, grow: 0 },
+    { name: 'Small',   r: 0.26, speed: 2.3,  hp: sizeHp(1), dps: 8,  reward: 10, color: '#f39c34', rim: '#7a4710', weight: 30, grow: 0.25 },
+    { name: 'Medium',  r: 0.32, speed: 1.7,  hp: sizeHp(2), dps: 14, reward: 15, color: '#4cc25a', rim: '#1d5a26', weight: 22, grow: 0.5 },
+    { name: 'Large',   r: 0.39, speed: 1.25, hp: sizeHp(3), dps: 24, reward: 20, color: '#b04ad8', rim: '#55206e', weight: 12, grow: 0.75 },
+    { name: 'Huge',    r: 0.46, speed: 0.95, hp: sizeHp(4), dps: 40, reward: 25, color: '#4a4fd8', rim: '#1f2266', weight: 6,  grow: 1 },
+    // gunners: rare on level 1 (weight 2), growing quickly each level (~4 at L2, ~6 at L3, ~10 at L5)
+    { name: 'Gunner',  r: 0.33, speed: 1.4,  hp: 80,        dps: 10, reward: 50, color: '#ff2a2a', rim: '#6e0000', weight: 2,  grow: 3,
+      gunner: true, hpGrowth: 1.10 },
   ];
+  const GUNNER_FIRE_RATE = TOWER.fireRate / 2;
+
+  const WAVE_INTERVAL = 20;          // seconds between single-type waves
+  const WAVE_SPAWN_RATE = 6;         // enemies per second while a wave is pouring in
+  const waveSize = () => 10 + 4 * S.level;
 
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
@@ -45,7 +58,7 @@
   const $ = id => document.getElementById(id);
   const ui = {
     level: $('level'), money: $('money'), target: $('target'), progress: $('progress'),
-    lives: $('lives'), kills: $('kills'), alive: $('alive'),
+    lives: $('lives'), kills: $('kills'), alive: $('alive'), wave: $('wave'),
     pauseBtn: $('pauseBtn'), speedBtn: $('speedBtn'),
     banner: $('banner'), bannerText: $('bannerText'), startBtn: $('startBtn'),
     overlay: $('overlay'), ovTitle: $('ovTitle'), ovBody: $('ovBody'), ovBtn: $('ovBtn'),
@@ -74,7 +87,9 @@
     level: 1, money: levelStartMoney(1), lives: START_LIVES, kills: 0,
     state: 'menu', // menu | ready | playing | paused | levelComplete | gameOver
     speed: 1, time: 0, spawnAcc: 0,
-    enemies: [], towers: [], bullets: [], particles: [], texts: [],
+    waveTimer: WAVE_INTERVAL, waveNum: 0, waveType: 0, waveLeft: 0, waveAcc: 0, waveMsgT: 0,
+    bonusMsg: '', bonusMsgT: 0, bonusUsed: false,
+    enemies: [], towers: [], bullets: [], enemyBullets: [], particles: [], texts: [],
     hover: null,
   };
   const target = () => S.level * LEVEL_GOAL;
@@ -320,11 +335,11 @@
   }
 
   // ================================================================ enemies
-  // larger tiers become more common as levels go up
-  function pickTier() {
+  // larger / special types become more common as levels go up
+  function pickType() {
     let total = 0;
-    const w = ENEMY_TIERS.map((t, k) => {
-      const v = t.weight * (1 + 0.35 * (S.level - 1) * k / 4);
+    const w = ENEMY_TYPES.map(t => {
+      const v = t.weight * (1 + 0.35 * (S.level - 1) * t.grow);
       total += v;
       return v;
     });
@@ -333,12 +348,12 @@
     return w.length - 1;
   }
 
-  function spawnEnemy() {
+  function spawnEnemy(type = pickType()) {
     if (!entranceCells.length) return false;
-    const tier = pickTier();
-    const T = ENEMY_TIERS[tier];
-    const hpMul = 1 + 0.4 * (S.level - 1);
-    const spMul = 1 + 0.04 * (S.level - 1);
+    const T = ENEMY_TYPES[type];
+    const strengthMul = 1.05 ** (S.level - 1);
+    const hpMul = (T.hpGrowth || 1.05) ** (S.level - 1);
+    const speedMul = 1.01 ** (S.level - 1);
     for (let tries = 0; tries < 6; tries++) {
       const c = entranceCells[(Math.random() * entranceCells.length) | 0];
       const x = T.r + 0.05 + Math.random() * 0.8;
@@ -351,10 +366,11 @@
       }
       if (!ok) continue;
       S.enemies.push({
-        tier, x, y, vx: T.speed * 0.5, vy: 0, r: T.r,
-        speed: T.speed * spMul * rand(0.9, 1.1),
-        hp: T.hp * hpMul, maxHp: T.hp * hpMul, dps: T.dps * (1 + 0.15 * (S.level - 1)),
+        type, x, y, vx: T.speed * 0.5, vy: 0, r: T.r,
+        speed: T.speed * speedMul * rand(0.9, 1.1),
+        hp: T.hp * hpMul, maxHp: T.hp * hpMul, dps: T.dps * strengthMul,
         color: T.color, rim: T.rim, dead: false, leaked: false, hitT: 0,
+        gunner: !!T.gunner, cd: Math.random() / GUNNER_FIRE_RATE, aim: 0, reward: T.reward,
       });
       return true;
     }
@@ -439,10 +455,10 @@
   function killEnemy(e) {
     if (e.dead) return;
     e.dead = true;
-    S.money += KILL_REWARD;
+    S.money += e.reward;
     S.kills++;
     burst(e.x, e.y, e.color, 8 + (e.r * 10) | 0);
-    if (S.texts.length < 40) S.texts.push({ x: e.x, y: e.y - 0.3, text: '+$' + KILL_REWARD, life: 0.9, max: 0.9 });
+    if (S.texts.length < 40) S.texts.push({ x: e.x, y: e.y - 0.3, text: '+$' + e.reward, life: 0.9, max: 0.9 });
   }
 
   // ================================================================ towers
@@ -450,7 +466,7 @@
     if (!inB(cx, cy)) return false;
     const i = idx(cx, cy);
     if (towerAt[i] || noBuild[i]) return false;
-    if (S.money < TOWER_COST) return false;
+    if (S.money < towerCost()) return false;
     for (const e of S.enemies) {
       const qx = clamp(e.x, cx, cx + 1), qy = clamp(e.y, cy, cy + 1);
       if ((e.x - qx) ** 2 + (e.y - qy) ** 2 < e.r * e.r) return false;
@@ -464,10 +480,11 @@
     const t = {
       cx, cy, x: cx + 0.5, y: cy + 0.5, hp: TOWER.hp, maxHp: TOWER.hp,
       cd: 0, angle: -Math.PI / 2, hitT: 0, inCorridor: !!walk[i], dead: false,
+      cost: towerCost(),
     };
     S.towers.push(t);
     towerAt[i] = t;
-    S.money -= TOWER_COST;
+    S.money -= t.cost;
     if (t.inCorridor) computeFlow();
   }
 
@@ -484,8 +501,13 @@
     if (!inB(cx, cy)) return;
     const t = towerAt[idx(cx, cy)];
     if (!t) return;
-    S.money += SELL_REFUND;
-    S.texts.push({ x: t.x, y: t.y - 0.3, text: '+$' + SELL_REFUND, life: 0.9, max: 0.9 });
+    if (t.hp < t.maxHp * SELL_MIN_HEALTH) {
+      S.texts.push({ x: t.x, y: t.y - 0.3, text: 'Too damaged', life: 0.9, max: 0.9, color: '#ff6b6b' });
+      return;
+    }
+    const refund = Math.floor(t.cost / 2);
+    S.money += refund;
+    S.texts.push({ x: t.x, y: t.y - 0.3, text: '+$' + refund, life: 0.9, max: 0.9 });
     removeTower(t, false);
   }
 
@@ -553,6 +575,84 @@
     S.bullets = S.bullets.filter(b => b.life > 0);
   }
 
+  // ================================================================ gunner enemies
+  // Gunners shoot the nearest tower in range with the same range / rate / damage / speed as towers.
+  function updateGunners(dt) {
+    if (!S.towers.length) return;
+    const R2 = TOWER.range * TOWER.range;
+    for (const e of S.enemies) {
+      if (!e.gunner || e.dead || e.leaked) continue;
+      e.cd -= dt;
+      if (e.cd > 0) continue;
+      let best = null, bestD = R2;
+      for (const t of S.towers) {
+        const d2 = (t.x - e.x) ** 2 + (t.y - e.y) ** 2;
+        if (d2 <= bestD) { bestD = d2; best = t; }
+      }
+      if (!best) continue;
+      e.aim = Math.atan2(best.y - e.y, best.x - e.x);
+      e.cd = 1 / GUNNER_FIRE_RATE;
+      S.enemyBullets.push({
+        x: e.x + Math.cos(e.aim) * e.r, y: e.y + Math.sin(e.aim) * e.r,
+        target: best, tx: best.x, ty: best.y, dmg: TOWER.damage, life: 2,
+      });
+    }
+  }
+
+  function updateEnemyBullets(dt) {
+    const step = TOWER.bulletSpeed * dt;
+    for (const b of S.enemyBullets) {
+      b.life -= dt;
+      const alive = b.target && !b.target.dead;
+      if (alive) { b.tx = b.target.x; b.ty = b.target.y; }
+      const dx = b.tx - b.x, dy = b.ty - b.y;
+      const d = Math.hypot(dx, dy);
+      if (d <= step + (alive ? 0.4 : 0)) {
+        if (alive) damageTower(b.target, b.dmg);
+        b.life = 0;
+      } else {
+        b.x += (dx / d) * step; b.y += (dy / d) * step;
+      }
+    }
+    S.enemyBullets = S.enemyBullets.filter(b => b.life > 0);
+  }
+
+  // ================================================================ waves
+  // Every WAVE_INTERVAL seconds a burst of a single random enemy type pours in,
+  // on top of the normal mixed trickle.
+  // Size types are equally likely; gunner waves start rare and become as likely as the
+  // others by level 5. The previous wave's type is never picked twice in a row.
+  function pickWaveType(prev) {
+    let total = 0;
+    const w = ENEMY_TYPES.map((T, k) => {
+      const v = k === prev ? 0 : T.gunner ? Math.min(1, 0.2 * S.level) : 1;
+      total += v;
+      return v;
+    });
+    let r = Math.random() * total;
+    for (let k = 0; k < w.length; k++) { if (w[k] > 0 && (r -= w[k]) <= 0) return k; }
+    return w.findLastIndex(v => v > 0);
+  }
+
+  function updateWaves(dt) {
+    S.waveTimer -= dt;
+    if (S.waveMsgT > 0) S.waveMsgT -= dt;
+    if (S.waveTimer <= 0) {
+      S.waveTimer += WAVE_INTERVAL;
+      S.waveNum++;
+      S.waveType = pickWaveType(S.waveNum === 1 ? -1 : S.waveType);
+      S.waveLeft += waveSize();
+      S.waveMsgT = 2.5;
+    }
+    if (S.waveLeft <= 0) return;
+    S.waveAcc += WAVE_SPAWN_RATE * dt;
+    while (S.waveAcc >= 1 && S.waveLeft > 0 && S.enemies.length < MAX_ENEMIES) {
+      if (!spawnEnemy(S.waveType)) { S.waveAcc = Math.min(S.waveAcc, 2); break; }
+      S.waveAcc -= 1;
+      S.waveLeft--;
+    }
+  }
+
   // ================================================================ effects
   function burst(x, y, color, n) {
     for (let i = 0; i < n && S.particles.length < 600; i++) {
@@ -582,6 +682,7 @@
       if (!spawnEnemy()) { S.spawnAcc = Math.min(S.spawnAcc, 3); break; }
       S.spawnAcc -= 1;
     }
+    updateWaves(dt);
 
     moveEnemies(dt);
     for (let it = 0; it < 2; it++) {
@@ -603,18 +704,38 @@
     buildHash();
     updateTowers(dt);
     updateBullets(dt);
+    updateGunners(dt);
+    updateEnemyBullets(dt);
     S.enemies = S.enemies.filter(e => !e.dead && !e.leaked);
     updateFx(dt);
+    if (S.bonusMsgT > 0) S.bonusMsgT -= dt;
+    checkEmergencyFunds();
 
     if (S.lives <= 0) { S.lives = 0; gameOver(); return; }
     if (S.money >= target()) levelComplete();
   }
 
+  // Broke and no towers left: grant a random amount that buys between 2 and 10 towers.
+  // Only once per level.
+  function checkEmergencyFunds() {
+    const cost = towerCost();
+    if (S.bonusUsed || S.towers.length > 0 || S.money >= cost) return;
+    S.bonusUsed = true;
+    const n = 2 + Math.floor(Math.random() * 9);                 // 2..10 towers
+    const total = n * cost + Math.floor(Math.random() * cost);   // still buys exactly n
+    const grant = total - S.money;
+    S.money = total;
+    S.bonusMsg = `EMERGENCY FUNDS: +$${grant} (${n} towers)`;
+    S.bonusMsgT = 3;
+  }
+
   // ================================================================ level flow
   function setupLevel() {
-    S.enemies = []; S.bullets = []; S.particles = []; S.texts = [];
+    S.enemies = []; S.bullets = []; S.enemyBullets = []; S.particles = []; S.texts = [];
     S.towers = []; towerAt.fill(null);
     S.time = 0; S.spawnAcc = 0; S.lives = START_LIVES;
+    S.waveTimer = WAVE_INTERVAL; S.waveNum = 0; S.waveLeft = 0; S.waveAcc = 0; S.waveMsgT = 0;
+    S.bonusMsgT = 0; S.bonusUsed = false;
     S.money = levelStartMoney(S.level);
     generateMap();
     computeFlow();
@@ -748,6 +869,13 @@
       if (!t) {
         ctx.fillStyle = ok ? 'rgba(120,255,120,0.35)' : 'rgba(255,80,80,0.35)';
         ctx.fillRect(h.x * CELL, h.y * CELL, CELL, CELL);
+      } else {
+        // sell hint: gold outline if sellable, red if too damaged
+        const sellable = t.hp >= t.maxHp * SELL_MIN_HEALTH;
+        ctx.strokeStyle = sellable ? '#ffd54a' : '#ff4040';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(h.x * CELL + 1, h.y * CELL + 1, CELL - 2, CELL - 2);
+        ctx.lineWidth = 1;
       }
     }
 
@@ -780,6 +908,13 @@
       ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
       ctx.fillStyle = e.hitT > 0 ? '#ffffff' : e.color; ctx.fill();
       ctx.strokeStyle = e.rim; ctx.stroke();
+      if (e.gunner) {
+        // gun barrel pointing at its last target
+        ctx.strokeStyle = '#2a0000'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(px, py);
+        ctx.lineTo(px + Math.cos(e.aim) * r * 1.5, py + Math.sin(e.aim) * r * 1.5); ctx.stroke();
+        ctx.lineWidth = 1.5;
+      }
       // eyes facing movement direction
       const a = Math.atan2(e.vy, e.vx);
       ctx.fillStyle = '#111';
@@ -796,6 +931,8 @@
     // bullets
     ctx.fillStyle = '#ffe873';
     for (const b of S.bullets) ctx.fillRect(b.x * CELL - 2, b.y * CELL - 2, 4, 4);
+    ctx.fillStyle = '#ff4040';
+    for (const b of S.enemyBullets) ctx.fillRect(b.x * CELL - 2, b.y * CELL - 2, 4, 4);
 
     // particles
     for (const p of S.particles) {
@@ -815,6 +952,30 @@
     }
     ctx.globalAlpha = 1;
 
+    // wave announcement
+    if (S.waveMsgT > 0) {
+      const T = ENEMY_TYPES[S.waveType];
+      ctx.globalAlpha = Math.min(1, S.waveMsgT);
+      ctx.font = 'bold 28px system-ui, sans-serif';
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      const msg = `WAVE ${S.waveNum}: ${T.name.toUpperCase()} x${waveSize()}`;
+      ctx.strokeText(msg, W / 2, 40);
+      ctx.fillStyle = T.color;
+      ctx.fillText(msg, W / 2, 40);
+      ctx.globalAlpha = 1;
+    }
+
+    // emergency funds announcement
+    if (S.bonusMsgT > 0) {
+      ctx.globalAlpha = Math.min(1, S.bonusMsgT);
+      ctx.font = 'bold 24px system-ui, sans-serif';
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.strokeText(S.bonusMsg, W / 2, 80);
+      ctx.fillStyle = '#ffd54a';
+      ctx.fillText(S.bonusMsg, W / 2, 80);
+      ctx.globalAlpha = 1;
+    }
+
     if (S.state === 'paused') {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(0, 0, W, H);
@@ -833,8 +994,12 @@
     setText(ui.lives, 'lives', String(S.lives));
     setText(ui.kills, 'kills', String(S.kills));
     setText(ui.alive, 'alive', String(S.enemies.length));
+    setText(ui.wave, 'wave', Math.ceil(S.waveTimer) + 's');
     setText(ui.pauseBtn, 'pause', S.state === 'paused' ? 'Resume' : S.state === 'ready' ? 'Start' : 'Pause');
     setText(ui.speedBtn, 'speed', 'Speed x' + S.speed);
+    const buildCost = towerCost();
+    setText($('buildCost'), 'buildCost', '$' + buildCost);
+    setText($('sellRefund'), 'sellRefund', '$' + Math.floor(buildCost / 2));
     const pct = Math.min(100, (S.money / target()) * 100).toFixed(1) + '%';
     if (hudCache.pct !== pct) { hudCache.pct = pct; ui.progress.style.width = pct; }
   }
@@ -853,8 +1018,10 @@
   canvas.addEventListener('mousedown', ev => {
     if (!canInteract()) return;
     const c = cellFromEvent(ev);
-    if (ev.button === 0) buildTower(c.x, c.y);
-    else if (ev.button === 2) sellTower(c.x, c.y);
+    if (ev.button !== 0 && ev.button !== 2) return;
+    // clicking a tower sells it (if healthy enough); clicking an empty cell builds
+    if (inB(c.x, c.y) && towerAt[idx(c.x, c.y)]) sellTower(c.x, c.y);
+    else if (ev.button === 0) buildTower(c.x, c.y);
   });
   canvas.addEventListener('contextmenu', ev => ev.preventDefault());
 
@@ -906,10 +1073,13 @@
   drawBackground();
   showOverlay('Horde Tower Defence v2',
     `<p>Hordes march down a winding corridor. They shove each other for space and can't leave the corridor.</p>
-     <p>Every kill earns <b>$${KILL_REWARD}</b>. Towers cost <b>$${TOWER_COST}</b>.
-        Each level your money resets to <b>$${BASE_MONEY} + $${MONEY_PER_LEVEL} × level</b>.</p>
+     <p>Kills earn <b>$5–$25</b> by size (bigger = more), gunners <b>$50</b>. Towers cost <b>$${BASE_TOWER_COST}</b> on level 1,
+        increasing by <b>$${TOWER_COST_PER_LEVEL}</b> each level.
+        Each level you start with enough money for <b>level + 1</b> towers.</p>
      <p>Reach <b>level × $${LEVEL_GOAL}</b> to clear a level. Don't let ${START_LIVES} enemies escape.</p>
-     <p>5 enemy sizes: small ones are fast but fragile, big ones are slow, tough and hit towers hard.</p>
+     <p>5 enemy sizes: small ones are fast but fragile, big ones are slow, tough and hit towers hard.
+        Red <b>gunners</b> shoot your towers as they pass.</p>
+     <p>Every ${WAVE_INTERVAL} seconds a wave of a single enemy type floods in.</p>
      <p>Build towers anywhere. Inside the corridor they block the horde, but they take damage and can be destroyed.</p>`,
     'Play', newGame);
   fitToWindow();

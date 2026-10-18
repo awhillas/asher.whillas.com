@@ -74,6 +74,7 @@
     <div class="stat">Lives<b id="lives">20</b></div>
     <div class="stat">Kills<b id="kills">0</b></div>
     <div class="stat">Horde<b id="alive">0</b></div>
+    <div class="stat">Next wave<b id="wave">20s</b></div>
     <div class="spacer"></div>
     <button id="pauseBtn">Pause</button>
     <button id="speedBtn">Speed x1</button>
@@ -93,13 +94,14 @@
     </div>
   </div>
   <div id="help">
-    Left-click: build ($50) &middot; Right-click: sell ($25) &middot; Space: start / pause &middot; F: speed &middot;
+    Click empty cell: build (<span id="buildCost">$50</span>) &middot; Click tower: sell (<span id="sellRefund">$25</span>, needs &ge;80% health) &middot; Space: start / pause &middot; F: speed &middot;
     Enemies (small = fast &amp; fragile, big = slow, tough &amp; hard-hitting):
-    <span class="legend"><span class="dot" style="background:#f7e05a;width:6px;height:6px"></span>1</span>
-    <span class="legend"><span class="dot" style="background:#f39c34;width:8px;height:8px"></span>2</span>
-    <span class="legend"><span class="dot" style="background:#e0564a;width:10px;height:10px"></span>3</span>
-    <span class="legend"><span class="dot" style="background:#b04ad8;width:12px;height:12px"></span>4</span>
-    <span class="legend"><span class="dot" style="background:#4a4fd8;width:14px;height:14px"></span>5</span>
+    <span class="legend"><span class="dot" style="background:#f7e05a;width:6px;height:6px"></span>$5</span>
+    <span class="legend"><span class="dot" style="background:#f39c34;width:8px;height:8px"></span>$10</span>
+    <span class="legend"><span class="dot" style="background:#4cc25a;width:10px;height:10px"></span>$15</span>
+    <span class="legend"><span class="dot" style="background:#b04ad8;width:12px;height:12px"></span>$20</span>
+    <span class="legend"><span class="dot" style="background:#4a4fd8;width:14px;height:14px"></span>$25</span>
+    <span class="legend"><span class="dot" style="background:#ff2a2a;width:10px;height:10px"></span>Gunner $50 (shoots towers)</span>
   </div>
 </div>
 <script src="horde-v2.js"></script>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A collection of free online games with no ads.">
+  <title>Asher's Games</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    :root { --pico-primary: #f0b429; --pico-primary-hover: #ffc94d; }
+    header.container { padding-top: 2rem; text-align: center; }
+    header h1 { color: #f0b429; margin-bottom: 0.5rem; letter-spacing: 1px; }
+    .intro { max-width: 40rem; margin: 0 auto; font-size: 1.1rem; }
+    /* responsive card grid: 1 column on phones, 2 on tablets, 3 on desktop */
+    .games {
+      display: grid; gap: 1.5rem;
+      grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+    }
+    .game-card { margin: 0; padding: 0; overflow: hidden; transition: transform .15s, box-shadow .15s; }
+    .game-card:hover { transform: translateY(-4px); box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+    .game-card a { display: block; text-decoration: none; color: inherit; }
+    .game-card img { display: block; width: 100%; aspect-ratio: 11 / 10; object-fit: cover; }
+    .game-card .info { padding: 1rem 1.25rem; }
+    .game-card h3 { margin: 0 0 .25rem; font-size: 1.15rem; }
+    .game-card p { margin: 0; font-size: .9rem; color: var(--pico-muted-color); }
+    footer { text-align: center; color: var(--pico-muted-color); font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <header class="container">
+    <h1>Asher's Games</h1>
+    <p class="intro">
+      Hello, welcome to my website. This is a collection of FREE online games that I have been
+      making, no Ads. Hope you like them! - Asher
+    </p>
+  </header>
+
+  <main class="container">
+    <section class="games">
+      <article class="game-card">
+        <a href="horde-v2.html">
+          <img src="images/horder-tower-defence-v2.png" alt="Screenshot of Horde Tower Defence v2" width="1078" height="980">
+          <div class="info">
+            <h3>Horde Tower Defence v2</h3>
+            <p>Hold back the horde as it marches down a winding corridor.</p>
+          </div>
+        </a>
+      </article>
+    </section>
+  </main>
+
+  <footer class="container">
+    <p>Made by Asher &middot; Free to play, no ads</p>
+  </footer>
+</body>
+</html>
