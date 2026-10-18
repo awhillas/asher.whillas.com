@@ -7,22 +7,29 @@
 <style>
   * { box-sizing: border-box; }
   body {
-    margin: 0; min-height: 100vh; background: #14181d; color: #e6e9ee;
+    margin: 0; height: 100vh; overflow: hidden; background: #14181d; color: #e6e9ee;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     display: flex; justify-content: center; align-items: flex-start;
   }
-  #app { width: 960px; max-width: 100vw; padding: 10px 0; }
-  h1 { font-size: 18px; margin: 0 0 8px; letter-spacing: 1px; color: #f0b429; }
+  /* width is set by JS so the whole game fits the window without scrolling */
+  #app { width: 960px; max-width: 100vw; padding: 6px 0; }
+  h1 { font-size: 16px; margin: 0 0 4px; letter-spacing: 1px; color: #f0b429; }
+  /* single row that never wraps, so the play area never jumps */
   #hud {
-    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-    background: #1e242c; border: 1px solid #2c3540; border-radius: 6px; padding: 6px 8px; margin-bottom: 6px;
+    display: flex; flex-wrap: nowrap; gap: 4px; align-items: center; overflow: hidden;
+    background: #1e242c; border: 1px solid #2c3540; border-radius: 6px;
+    padding: 3px 18px 3px 6px; margin-bottom: 4px;
   }
-  .stat { background: #262e38; border-radius: 4px; padding: 4px 8px; font-size: 13px; color: #9aa6b4; }
-  .stat b { color: #fff; font-size: 15px; margin-left: 4px; }
-  .goal { min-width: 190px; }
-  .bar { height: 5px; background: #11161b; border-radius: 3px; margin-top: 3px; overflow: hidden; }
+  .stat {
+    background: #262e38; border-radius: 4px; padding: 2px 6px; font-size: 11px; color: #9aa6b4;
+    white-space: nowrap; flex: 0 1 auto; min-width: 0;
+  }
+  .stat b { color: #fff; font-size: 12px; margin-left: 3px; font-variant-numeric: tabular-nums; }
+  .goal { flex: 0 1 150px; }
+  .bar { height: 4px; background: #11161b; border-radius: 2px; margin-top: 2px; overflow: hidden; }
   #progress { height: 100%; width: 0; background: linear-gradient(90deg, #f0b429, #5cd65c); transition: width .15s; }
-  .spacer { flex: 1; }
+  .spacer { flex: 1 1 0; min-width: 0; }
+  #hud button { padding: 4px 6px; font-size: 11px; width: 64px; flex: 0 0 auto; white-space: nowrap; }
   button {
     background: #3a6ea5; color: #fff; border: 0; border-radius: 4px; padding: 6px 12px;
     font-size: 13px; cursor: pointer; font-weight: 600;
@@ -30,8 +37,8 @@
   button:hover { background: #4a82bd; }
   button.go { background: #3c9a4a; }
   button.go:hover { background: #4cb35b; }
-  #stage { position: relative; width: 960px; max-width: 100vw; }
-  canvas { display: block; width: 100%; height: auto; border-radius: 6px; cursor: crosshair; image-rendering: pixelated; }
+  #stage { position: relative; width: 100%; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 6px; cursor: crosshair; }
   #overlay {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     background: rgba(10, 13, 17, 0.72); border-radius: 6px;
@@ -45,11 +52,14 @@
   .panel p { margin: 6px 0; line-height: 1.45; color: #c3cbd5; font-size: 14px; }
   .panel button { margin-top: 14px; font-size: 15px; padding: 9px 22px; }
   #banner {
-    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-    background: rgba(30, 36, 44, 0.94); border: 1px solid #3a4552; border-radius: 6px;
-    padding: 8px 14px; display: flex; gap: 12px; align-items: center; font-size: 14px;
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    max-width: 80%; text-align: center;
+    background: rgba(30, 36, 44, 0.94); border: 1px solid #3a4552; border-radius: 8px;
+    padding: 14px 20px; display: flex; flex-direction: column; gap: 10px; align-items: center; font-size: 14px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.5);
   }
-  #help { font-size: 12px; color: #7d8896; margin-top: 6px; text-align: center; }
+  #help { font-size: 12px; color: #7d8896; margin-top: 4px; text-align: center; line-height: 1.6; }
+  .panel { max-height: 100%; overflow: auto; }
   .legend { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 </style>
@@ -83,12 +93,13 @@
     </div>
   </div>
   <div id="help">
-    Left-click: build tower ($50) &middot; Right-click tower: sell ($25) &middot; Space: start / pause &middot; F: game speed
-    <br>
-    <span class="legend"><span class="dot" style="background:#e0564a"></span>Grunt</span>
-    <span class="legend"><span class="dot" style="background:#f0b429"></span>Runner</span>
-    <span class="legend"><span class="dot" style="background:#9b5de5"></span>Brute</span>
-    &middot; Towers built inside the corridor act as barricades &mdash; the horde will attack them.
+    Left-click: build ($50) &middot; Right-click: sell ($25) &middot; Space: start / pause &middot; F: speed &middot;
+    Enemies (small = fast &amp; fragile, big = slow, tough &amp; hard-hitting):
+    <span class="legend"><span class="dot" style="background:#f7e05a;width:6px;height:6px"></span>1</span>
+    <span class="legend"><span class="dot" style="background:#f39c34;width:8px;height:8px"></span>2</span>
+    <span class="legend"><span class="dot" style="background:#e0564a;width:10px;height:10px"></span>3</span>
+    <span class="legend"><span class="dot" style="background:#b04ad8;width:12px;height:12px"></span>4</span>
+    <span class="legend"><span class="dot" style="background:#4a4fd8;width:14px;height:14px"></span>5</span>
   </div>
 </div>
 <script src="horde-v2.js"></script>

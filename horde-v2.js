@@ -10,7 +10,9 @@
   const COLS = 40, ROWS = 28, CELL = 24, N = COLS * ROWS;
   const W = COLS * CELL, H = ROWS * CELL;
 
-  const START_MONEY = 150;
+  const BASE_MONEY = 150;
+  const MONEY_PER_LEVEL = 50;
+  const levelStartMoney = lvl => BASE_MONEY + MONEY_PER_LEVEL * lvl; // money resets to this each level
   const TOWER_COST = 50;
   const SELL_REFUND = 25;
   const KILL_REWARD = 10;
@@ -21,11 +23,15 @@
 
   const TOWER = { range: 3.6, damage: 10, fireRate: 2.2, hp: 150, bulletSpeed: 12 };
 
-  const ENEMY_TYPES = {
-    grunt:  { r: 0.32, speed: 1.7,  hp: 30,  dps: 12, color: '#e0564a', rim: '#7a231c' },
-    runner: { r: 0.24, speed: 2.7,  hp: 16,  dps: 6,  color: '#f0b429', rim: '#7a5a10' },
-    brute:  { r: 0.46, speed: 1.05, hp: 110, dps: 30, color: '#9b5de5', rim: '#4a2477' },
-  };
+  // 5 enemy tiers: small = fast & fragile, large = slow, tough & hits towers hard.
+  // Every enemy is worth KILL_REWARD. Radius must stay < 0.5 (spatial hash assumption).
+  const ENEMY_TIERS = [
+    { r: 0.20, speed: 3.0,  hp: 10,  dps: 4,  color: '#f7e05a', rim: '#7a6a10', weight: 30 },
+    { r: 0.26, speed: 2.3,  hp: 20,  dps: 8,  color: '#f39c34', rim: '#7a4710', weight: 30 },
+    { r: 0.32, speed: 1.7,  hp: 36,  dps: 14, color: '#e0564a', rim: '#7a231c', weight: 22 },
+    { r: 0.39, speed: 1.25, hp: 65,  dps: 24, color: '#b04ad8', rim: '#55206e', weight: 12 },
+    { r: 0.46, speed: 0.95, hp: 120, dps: 40, color: '#4a4fd8', rim: '#1f2266', weight: 6 },
+  ];
 
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
@@ -65,11 +71,11 @@
 
   // ---------------------------------------------------------------- game state
   const S = {
-    level: 1, money: START_MONEY, lives: START_LIVES, kills: 0,
+    level: 1, money: levelStartMoney(1), lives: START_LIVES, kills: 0,
     state: 'menu', // menu | ready | playing | paused | levelComplete | gameOver
     speed: 1, time: 0, spawnAcc: 0,
     enemies: [], towers: [], bullets: [], particles: [], texts: [],
-    hover: null, lastRefund: 0,
+    hover: null,
   };
   const target = () => S.level * LEVEL_GOAL;
 
@@ -314,19 +320,23 @@
   }
 
   // ================================================================ enemies
-  function pickType() {
-    const r = Math.random();
-    const bruteP = Math.min(0.3, 0.08 + 0.025 * (S.level - 1));
-    const runnerP = Math.min(0.35, 0.22 + 0.02 * (S.level - 1));
-    if (r < bruteP) return 'brute';
-    if (r < bruteP + runnerP) return 'runner';
-    return 'grunt';
+  // larger tiers become more common as levels go up
+  function pickTier() {
+    let total = 0;
+    const w = ENEMY_TIERS.map((t, k) => {
+      const v = t.weight * (1 + 0.35 * (S.level - 1) * k / 4);
+      total += v;
+      return v;
+    });
+    let r = Math.random() * total;
+    for (let k = 0; k < w.length; k++) { r -= w[k]; if (r <= 0) return k; }
+    return w.length - 1;
   }
 
   function spawnEnemy() {
     if (!entranceCells.length) return false;
-    const type = pickType();
-    const T = ENEMY_TYPES[type];
+    const tier = pickTier();
+    const T = ENEMY_TIERS[tier];
     const hpMul = 1 + 0.4 * (S.level - 1);
     const spMul = 1 + 0.04 * (S.level - 1);
     for (let tries = 0; tries < 6; tries++) {
@@ -341,7 +351,7 @@
       }
       if (!ok) continue;
       S.enemies.push({
-        type, x, y, vx: T.speed * 0.5, vy: 0, r: T.r,
+        tier, x, y, vx: T.speed * 0.5, vy: 0, r: T.r,
         speed: T.speed * spMul * rand(0.9, 1.1),
         hp: T.hp * hpMul, maxHp: T.hp * hpMul, dps: T.dps * (1 + 0.15 * (S.level - 1)),
         color: T.color, rim: T.rim, dead: false, leaked: false, hitT: 0,
@@ -605,13 +615,14 @@
     S.enemies = []; S.bullets = []; S.particles = []; S.texts = [];
     S.towers = []; towerAt.fill(null);
     S.time = 0; S.spawnAcc = 0; S.lives = START_LIVES;
+    S.money = levelStartMoney(S.level);
     generateMap();
     computeFlow();
     drawBackground();
     S.state = 'ready';
     hideOverlay();
-    ui.bannerText.textContent = (S.lastRefund > 0 ? `Towers refunded: $${S.lastRefund}. ` : '') +
-      `Level ${S.level}: reach $${target()} to win. Build towers, then start.`;
+    ui.bannerText.textContent =
+      `Level ${S.level}: start with $${S.money}, reach $${target()} to win. Build towers, then start.`;
     ui.banner.classList.remove('hidden');
   }
 
@@ -623,14 +634,12 @@
 
   function levelComplete() {
     S.state = 'levelComplete';
-    const refund = S.towers.length * TOWER_COST;
     showOverlay(`Level ${S.level} cleared!`,
       `<p>You reached <b>$${S.money}</b> (goal $${target()}).</p>
-       <p>A new corridor awaits. Your ${S.towers.length} surviving tower(s) will be dismantled and refunded <b>$${refund}</b>.</p>
+       <p>A new corridor awaits. Your towers are left behind and your money resets to
+          <b>$${levelStartMoney(S.level + 1)}</b>.</p>
        <p>Next goal: <b>$${(S.level + 1) * LEVEL_GOAL}</b>. The horde gets tougher.</p>`,
       'Next Level', () => {
-        S.lastRefund = refund;
-        S.money += refund;
         S.level++;
         setupLevel();
       });
@@ -644,7 +653,7 @@
   }
 
   function newGame() {
-    S.level = 1; S.money = START_MONEY; S.kills = 0; S.lastRefund = 0; S.speed = 1;
+    S.level = 1; S.kills = 0; S.speed = 1;
     setupLevel();
   }
 
@@ -879,15 +888,30 @@
     requestAnimationFrame(frame);
   }
 
+  // ================================================================ fit to window
+  // Scale the canvas (via CSS) so the whole UI fits the viewport without scrolling.
+  const appEl = $('app');
+  function fitToWindow() {
+    for (let pass = 0; pass < 2; pass++) { // HUD may re-wrap at a new width, so measure twice
+      const chrome = appEl.offsetHeight - canvas.offsetHeight;
+      const scale = Math.min((window.innerWidth - 16) / W, (window.innerHeight - chrome - 2) / H, 1.5);
+      appEl.style.width = Math.max(240, Math.floor(W * scale)) + 'px';
+    }
+  }
+  window.addEventListener('resize', fitToWindow);
+
   // ================================================================ boot
   generateMap();
   computeFlow();
   drawBackground();
   showOverlay('Horde Tower Defence v2',
     `<p>Hordes march down a winding corridor. They shove each other for space and can't leave the corridor.</p>
-     <p>Every kill earns <b>$${KILL_REWARD}</b>. Towers cost <b>$${TOWER_COST}</b>. You start with <b>$${START_MONEY}</b>.</p>
+     <p>Every kill earns <b>$${KILL_REWARD}</b>. Towers cost <b>$${TOWER_COST}</b>.
+        Each level your money resets to <b>$${BASE_MONEY} + $${MONEY_PER_LEVEL} × level</b>.</p>
      <p>Reach <b>level × $${LEVEL_GOAL}</b> to clear a level. Don't let ${START_LIVES} enemies escape.</p>
+     <p>5 enemy sizes: small ones are fast but fragile, big ones are slow, tough and hit towers hard.</p>
      <p>Build towers anywhere. Inside the corridor they block the horde, but they take damage and can be destroyed.</p>`,
     'Play', newGame);
+  fitToWindow();
   requestAnimationFrame(frame);
 })();
