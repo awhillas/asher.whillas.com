@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Horde Tower Defence v2</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: #14181d; color: #e6e9ee;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; justify-content: center; align-items: flex-start;
+  }
+  #app { width: 960px; max-width: 100vw; padding: 10px 0; }
+  h1 { font-size: 18px; margin: 0 0 8px; letter-spacing: 1px; color: #f0b429; }
+  #hud {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    background: #1e242c; border: 1px solid #2c3540; border-radius: 6px; padding: 6px 8px; margin-bottom: 6px;
+  }
+  .stat { background: #262e38; border-radius: 4px; padding: 4px 8px; font-size: 13px; color: #9aa6b4; }
+  .stat b { color: #fff; font-size: 15px; margin-left: 4px; }
+  .goal { min-width: 190px; }
+  .bar { height: 5px; background: #11161b; border-radius: 3px; margin-top: 3px; overflow: hidden; }
+  #progress { height: 100%; width: 0; background: linear-gradient(90deg, #f0b429, #5cd65c); transition: width .15s; }
+  .spacer { flex: 1; }
+  button {
+    background: #3a6ea5; color: #fff; border: 0; border-radius: 4px; padding: 6px 12px;
+    font-size: 13px; cursor: pointer; font-weight: 600;
+  }
+  button:hover { background: #4a82bd; }
+  button.go { background: #3c9a4a; }
+  button.go:hover { background: #4cb35b; }
+  #stage { position: relative; width: 960px; max-width: 100vw; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 6px; cursor: crosshair; image-rendering: pixelated; }
+  #overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(10, 13, 17, 0.72); border-radius: 6px;
+  }
+  #overlay.hidden, #banner.hidden { display: none; }
+  .panel {
+    background: #1e242c; border: 1px solid #3a4552; border-radius: 8px; padding: 22px 28px;
+    max-width: 520px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.5);
+  }
+  .panel h2 { margin: 0 0 10px; color: #f0b429; }
+  .panel p { margin: 6px 0; line-height: 1.45; color: #c3cbd5; font-size: 14px; }
+  .panel button { margin-top: 14px; font-size: 15px; padding: 9px 22px; }
+  #banner {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    background: rgba(30, 36, 44, 0.94); border: 1px solid #3a4552; border-radius: 6px;
+    padding: 8px 14px; display: flex; gap: 12px; align-items: center; font-size: 14px;
+  }
+  #help { font-size: 12px; color: #7d8896; margin-top: 6px; text-align: center; }
+  .legend { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>HORDE TOWER DEFENCE v2</h1>
+  <div id="hud">
+    <div class="stat">Level<b id="level">1</b></div>
+    <div class="stat">Money<b id="money">$150</b></div>
+    <div class="stat goal">Goal<b id="target">$1000</b><div class="bar"><div id="progress"></div></div></div>
+    <div class="stat">Lives<b id="lives">20</b></div>
+    <div class="stat">Kills<b id="kills">0</b></div>
+    <div class="stat">Horde<b id="alive">0</b></div>
+    <div class="spacer"></div>
+    <button id="pauseBtn">Pause</button>
+    <button id="speedBtn">Speed x1</button>
+  </div>
+  <div id="stage">
+    <canvas id="game" width="960" height="672"></canvas>
+    <div id="banner" class="hidden">
+      <span id="bannerText">Place towers, then start.</span>
+      <button id="startBtn" class="go">Start Level</button>
+    </div>
+    <div id="overlay">
+      <div class="panel">
+        <h2 id="ovTitle">Horde Tower Defence</h2>
+        <div id="ovBody"></div>
+        <button id="ovBtn" class="go">Play</button>
+      </div>
+    </div>
+  </div>
+  <div id="help">
+    Left-click: build tower ($50) &middot; Right-click tower: sell ($25) &middot; Space: start / pause &middot; F: game speed
+    <br>
+    <span class="legend"><span class="dot" style="background:#e0564a"></span>Grunt</span>
+    <span class="legend"><span class="dot" style="background:#f0b429"></span>Runner</span>
+    <span class="legend"><span class="dot" style="background:#9b5de5"></span>Brute</span>
+    &middot; Towers built inside the corridor act as barricades &mdash; the horde will attack them.
+  </div>
+</div>
+<script src="horde-v2.js"></script>
+</body>
+</html>
