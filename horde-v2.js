@@ -7,7 +7,20 @@
  */
 (() => {
   // ---------------------------------------------------------------- config
-  const COLS = 40, ROWS = 28, CELL = 24, N = COLS * ROWS;
+  // Must match the mobile @media query in horde-v2.html.
+  const IS_MOBILE = window.matchMedia('(max-width: 360px)').matches;
+  const CELL = 24; // canvas px per cell; CSS scales the canvas to fit the window
+  // Desktop: fixed 40 x 28 grid. Mobile: cells are twice the size a 40-column grid would have
+  // at 360px (18 CSS px), and the grid is sized on load to fill the window below the HUD.
+  const MOBILE_CELL_CSS = 2 * 360 / 40;
+  const [COLS, ROWS] = (() => {
+    if (!IS_MOBILE) return [40, 28];
+    const cols = Math.max(12, Math.floor(window.innerWidth / MOBILE_CELL_CSS));
+    const cellCss = window.innerWidth / cols;
+    const top = document.getElementById('stage').getBoundingClientRect().top;
+    return [cols, Math.max(16, Math.floor((window.innerHeight - top) / cellCss))];
+  })();
+  const N = COLS * ROWS;
   const W = COLS * CELL, H = ROWS * CELL;
 
   const BASE_TOWER_COST = 50;
@@ -50,6 +63,7 @@
 
   // ---------------------------------------------------------------- DOM
   const canvas = document.getElementById('game');
+  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   const bg = document.createElement('canvas');
   bg.width = W; bg.height = H;
@@ -107,10 +121,13 @@
   function tryGenerate() {
     walk.fill(0); noBuild.fill(0); goal.fill(0); entrance.fill(0);
 
-    const lanes = Math.random() < 0.5 ? 3 : 4;
+    // as many lanes as fit with 7..10.5 rows between them (3 or 4 on the 28-row desktop grid)
     const marginY = 3.5;
+    const minLanes = Math.ceil((ROWS - 2 * marginY) / 10.5) + 1;
+    const maxLanes = Math.max(minLanes, Math.floor((ROWS - 2 * marginY) / 7) + 1);
+    const lanes = minLanes + Math.floor(Math.random() * (maxLanes - minLanes + 1));
     const spacing = (ROWS - 2 * marginY) / (lanes - 1);
-    const jit = lanes === 3 ? 1.6 : 0.8;                      // vertical wiggle of a lane
+    const jit = clamp(0.8 + (spacing - 7) * (0.8 / 3.5), 0.8, 1.6); // vertical wiggle of a lane
     const maxR = Math.min(2.8, (spacing - 1.2 - 2 * jit) / 2); // half width cap so lanes never merge
     const minR = 1.0;
     const rr = (cap = maxR) => minR + Math.random() * (Math.max(minR, cap) - minR);
@@ -120,7 +137,7 @@
     for (let i = 0; i < lanes; i++) laneY.push(marginY + i * spacing + rand(-0.4, 0.4));
     const turnX = [];
     for (let k = 0; k < lanes - 1; k++) {
-      const off = rand(3.5, 6.5);
+      const off = rand(3.5, Math.max(3.5, Math.min(6.5, COLS * 0.2))); // narrow grids turn tighter
       turnX.push(k % 2 === 0 ? COLS - off : off);
     }
 
@@ -132,7 +149,7 @@
       const sx = i === 0 ? -3 : turnX[i - 1];
       const ex = i === lanes - 1 ? (right ? COLS + 3 : -3) : turnX[i];
       pts.push({ x: sx, y, r: rr(edgeCap(sx)) });
-      const m = 2 + Math.floor(Math.random() * 3);
+      const m = 2 + Math.floor(Math.random() * clamp(Math.round(Math.abs(ex - sx) / 8), 1, 3)); // fewer bends on short lanes
       for (let j = 1; j <= m; j++) {
         const t = j / (m + 1);
         pts.push({ x: sx + (ex - sx) * t + rand(-1.2, 1.2), y: y + rand(-jit, jit), r: rr() });
@@ -807,7 +824,7 @@
       }
     }
     // grass tufts and corridor pebbles
-    for (let k = 0; k < 500; k++) {
+    for (let k = 0; k < N * 0.45; k++) {
       const x = Math.random() * COLS, y = Math.random() * ROWS;
       const i = idx(x | 0, y | 0);
       g.fillStyle = walk[i] ? 'rgba(60,44,28,0.5)' : 'rgba(90,140,70,0.45)';
@@ -968,7 +985,7 @@
     // emergency funds announcement
     if (S.bonusMsgT > 0) {
       ctx.globalAlpha = Math.min(1, S.bonusMsgT);
-      ctx.font = 'bold 24px system-ui, sans-serif';
+      ctx.font = `bold ${Math.min(24, W / 22) | 0}px system-ui, sans-serif`; // fit narrow grids
       ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.8)';
       ctx.strokeText(S.bonusMsg, W / 2, 80);
       ctx.fillStyle = '#ffd54a';
@@ -1013,12 +1030,19 @@
   }
   const canInteract = () => S.state === 'ready' || S.state === 'playing' || S.state === 'paused';
 
-  canvas.addEventListener('mousemove', ev => { S.hover = cellFromEvent(ev); });
-  canvas.addEventListener('mouseleave', () => { S.hover = null; });
-  canvas.addEventListener('mousedown', ev => {
+  // pointer events cover mouse and touch; touch has no hover, so a tap shows the preview briefly
+  let hoverTimer = 0;
+  canvas.addEventListener('pointermove', ev => { if (ev.pointerType === 'mouse') S.hover = cellFromEvent(ev); });
+  canvas.addEventListener('pointerleave', ev => { if (ev.pointerType === 'mouse') S.hover = null; });
+  canvas.addEventListener('pointerdown', ev => {
     if (!canInteract()) return;
     const c = cellFromEvent(ev);
     if (ev.button !== 0 && ev.button !== 2) return;
+    if (ev.pointerType !== 'mouse') {
+      S.hover = c;
+      clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => { S.hover = null; }, 900);
+    }
     // clicking a tower sells it (if healthy enough); clicking an empty cell builds
     if (inB(c.x, c.y) && towerAt[idx(c.x, c.y)]) sellTower(c.x, c.y);
     else if (ev.button === 0) buildTower(c.x, c.y);
@@ -1061,7 +1085,9 @@
   function fitToWindow() {
     for (let pass = 0; pass < 2; pass++) { // HUD may re-wrap at a new width, so measure twice
       const chrome = appEl.offsetHeight - canvas.offsetHeight;
-      const scale = Math.min((window.innerWidth - 16) / W, (window.innerHeight - chrome - 2) / H, 1.5);
+      const scale = IS_MOBILE
+        ? Math.min(window.innerWidth / W, (window.innerHeight - chrome) / H) // edge to edge
+        : Math.min((window.innerWidth - 16) / W, (window.innerHeight - chrome - 2) / H, 1.5);
       appEl.style.width = Math.max(240, Math.floor(W * scale)) + 'px';
     }
   }

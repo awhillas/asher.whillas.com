@@ -13,7 +13,7 @@
     </script>
 
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Horde Tower Defence v2</title>
 <link rel="icon" href="favicon/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
@@ -79,6 +79,31 @@
   .panel { max-height: 100%; overflow: auto; }
   .legend { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+  /* ---- mobile (<= 360px wide). Must match IS_MOBILE in horde-v2.js, which sizes the grid
+     on load to fill the window below the HUD. */
+  @media (max-width: 360px) {
+    body { height: 100vh; height: 100dvh; }
+    #app { width: 100vw; padding: 0; }
+    h1, #help, .spacer { display: none; }
+    /* two rows of five: Level Money Goal(x2) Lives / Kills Horde Wave Pause Speed */
+    #hud {
+      display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px;
+      padding: 3px; margin: 0; border-radius: 0; border-width: 0 0 1px;
+    }
+    .stat { padding: 2px 3px; font-size: 9px; line-height: 1.2; text-align: center; }
+    .stat b { display: block; margin: 0; font-size: 13px; }
+    .goal { grid-column: span 2; }
+    .goal b { display: inline; margin-left: 3px; }
+    .bar { margin-top: 4px; }
+    #hud button { width: auto; height: 100%; padding: 4px 2px; font-size: 11px; white-space: normal; line-height: 1.1; }
+    canvas { border-radius: 0; touch-action: manipulation; }
+    #overlay { border-radius: 0; }
+    .panel { padding: 14px 14px; margin: 0 10px; }
+    .panel h2 { font-size: 20px; }
+    .panel p { font-size: 13px; line-height: 1.4; }
+    #banner { max-width: 90%; padding: 12px 14px; }
+  }
 </style>
 </head>
 <body>
