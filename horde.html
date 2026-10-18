@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="theme-color" content="#101411" />
+        <title>Horde Line — Grid Defense</title>
+        <style>
+            :root {
+                color-scheme: dark;
+                --bg: #101411;
+                --panel: #181e19;
+                --panel-hi: #202820;
+                --line: #303b31;
+                --muted: #879386;
+                --text: #edf2e9;
+                --lime: #c9f06a;
+                --orange: #f5a55d;
+            }
+
+            * { box-sizing: border-box; }
+
+            body {
+                min-height: 100vh;
+                margin: 0;
+                padding: 26px 20px 30px;
+                background:
+                    radial-gradient(ellipse at 50% -20%, #273329 0, transparent 56%),
+                    var(--bg);
+                color: var(--text);
+                font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            }
+
+            .shell { width: min(1120px, 100%); margin: 0 auto; }
+
+            .topline {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 20px;
+                margin: 0 2px 17px;
+            }
+
+            .brand { display: flex; align-items: center; gap: 13px; }
+            .brand-mark {
+                display: grid;
+                width: 42px;
+                height: 42px;
+                place-items: center;
+                border: 1px solid #43513c;
+                border-radius: 13px;
+                background: #222b1f;
+                color: var(--lime);
+                font-size: 21px;
+                box-shadow: inset 0 0 18px #c9f06a0c;
+            }
+            h1 { margin: 0; font-size: 20px; letter-spacing: .08em; line-height: 1.1; }
+            .eyebrow { margin-top: 5px; color: var(--muted); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; }
+
+            .top-actions { display: flex; align-items: center; gap: 9px; }
+            button {
+                min-height: 38px;
+                padding: 0 14px;
+                border: 1px solid var(--line);
+                border-radius: 9px;
+                background: #1b221c;
+                color: var(--text);
+                font: inherit;
+                font-size: 12px;
+                font-weight: 700;
+                cursor: pointer;
+                transition: border-color .15s, background .15s, transform .15s;
+            }
+            button:hover { border-color: #71855b; background: #252f24; }
+            button:active { transform: translateY(1px); }
+            button.primary { border-color: #c9f06a66; background: #c9f06a; color: #1b2412; }
+            button.primary:hover { background: #d6f78a; }
+
+            .stats {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 10px;
+                margin-bottom: 12px;
+            }
+            .stat {
+                min-height: 73px;
+                padding: 12px 15px;
+                border: 1px solid var(--line);
+                border-radius: 11px;
+                background: linear-gradient(145deg, #1c231d, #171d18);
+            }
+            .stat-label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+            .stat-value { margin-top: 5px; font-size: 21px; font-weight: 750; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+            .stat-value small { color: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: 0; }
+            .stat-value.money { color: var(--lime); }
+            .stat-value.health { color: #ff8275; }
+            .stat-value.goal { color: #f3c879; }
+            .stat-icon { color: var(--lime); font-size: 14px; }
+
+            .goal-wrap {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin: 0 1px 11px;
+                color: var(--muted);
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: .07em;
+                text-transform: uppercase;
+            }
+            .goal-track { flex: 1; height: 7px; overflow: hidden; border-radius: 8px; background: #293129; }
+            .goal-fill { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #a6d348, #d5f57f); transition: width .25s ease; box-shadow: 0 0 12px #c9f06a55; }
+            .goal-amount { min-width: 120px; text-align: right; font-variant-numeric: tabular-nums; }
+
+            .board-frame {
+                position: relative;
+                overflow: hidden;
+                border: 1px solid #3a4539;
+                border-radius: 13px;
+                background: #121713;
+                box-shadow: 0 18px 56px #0008, 0 0 0 5px #ffffff04;
+            }
+            canvas {
+                display: block;
+                width: 100%;
+                height: auto;
+                aspect-ratio: 5 / 3;
+                cursor: crosshair;
+                touch-action: manipulation;
+            }
+
+            .board-footer {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 14px;
+                padding: 11px 14px;
+                border-top: 1px solid #303a31;
+                background: #171e18;
+                color: var(--muted);
+                font-size: 11px;
+            }
+            .legend { display: flex; align-items: center; gap: 16px; }
+            .legend-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+            .legend-dot { width: 8px; height: 8px; border-radius: 50%; background: #fd7466; box-shadow: 0 0 8px #fd746677; }
+            .legend-dot.tower { border-radius: 2px; background: var(--lime); box-shadow: 0 0 8px #c9f06a66; }
+            .legend-dot.road { border-radius: 2px; background: #4a5647; }
+            .hint { text-align: right; }
+            .key { padding: 2px 5px; border: 1px solid #414b41; border-radius: 4px; background: #222922; color: #d4ddce; font-size: 10px; }
+
+            @media (max-width: 700px) {
+                body { padding: 16px 10px 22px; }
+                .topline { align-items: flex-start; }
+                .brand-mark { width: 37px; height: 37px; }
+                h1 { font-size: 17px; }
+                .eyebrow { font-size: 9px; }
+                .top-actions { gap: 6px; }
+                button { min-height: 35px; padding: 0 10px; font-size: 11px; }
+                .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+                .stat { min-height: 62px; padding: 9px 11px; }
+                .stat-value { font-size: 18px; }
+                .goal-wrap { gap: 8px; font-size: 9px; }
+                .goal-amount { min-width: 93px; }
+                .board-footer { align-items: flex-start; flex-direction: column; }
+                .legend { gap: 11px; font-size: 10px; }
+                .hint { text-align: left; }
+            }
+        </style>
+    </head>
+    <body>
+        <main class="shell">
+            <header class="topline">
+                <div class="brand">
+                    <div class="brand-mark" aria-hidden="true">⌁</div>
+                    <div>
+                        <h1>HORDE LINE</h1>
+                        <div class="eyebrow">Grid defense · hold the corridor</div>
+                    </div>
+                </div>
+                <div class="top-actions">
+                    <button id="speedButton" type="button" aria-label="Change game speed">Speed 1×</button>
+                    <button id="pauseButton" type="button">Pause</button>
+                    <button id="restartButton" type="button">Restart</button>
+                </div>
+            </header>
+
+            <section class="stats" aria-label="Game status">
+                <div class="stat">
+                    <div class="stat-label"><span class="stat-icon">◆</span> Level</div>
+                    <div class="stat-value" id="levelValue">01</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label"><span class="stat-icon">$</span> Bank</div>
+                    <div class="stat-value money" id="moneyValue">$150</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label"><span class="stat-icon">♥</span> Core integrity</div>
+                    <div class="stat-value health" id="healthValue">20 <small>/ 20</small></div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label"><span class="stat-icon">✦</span> Wave</div>
+                    <div class="stat-value" id="waveValue">01 <small>· 00 waiting</small></div>
+                </div>
+            </section>
+
+            <div class="goal-wrap" aria-label="Level bounty goal">
+                <span>Level bounty</span>
+                <div class="goal-track"><div class="goal-fill" id="goalFill"></div></div>
+                <span class="goal-amount" id="goalAmount">$0 / $1,000</span>
+            </div>
+
+            <section class="board-frame" aria-label="Tower defense game board">
+                <canvas id="gameCanvas" width="960" height="576" aria-label="Grid map. Click a tile to place a $50 tower."></canvas>
+                <div class="board-footer">
+                    <div class="legend" aria-label="Map legend">
+                        <span class="legend-item"><span class="legend-dot road"></span>Generated corridor</span>
+                        <span class="legend-item"><span class="legend-dot"></span>Horde</span>
+                        <span class="legend-item"><span class="legend-dot tower"></span>Tower · $50</span>
+                    </div>
+                    <div class="hint"><span class="key">CLICK</span> place anywhere · towers in the lane can be attacked</div>
+                </div>
+            </section>
+        </main>
+
+        <script src="horde.js"></script>
+    </body>
+</html>
