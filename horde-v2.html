@@ -76,13 +76,14 @@
     box-shadow: 0 10px 40px rgba(0,0,0,.5);
   }
   #help { font-size: 12px; color: #7d8896; margin-top: 4px; text-align: center; line-height: 1.6; }
+  #dims { min-height: 14px; font-size: 10px; color: #5c6672; text-align: center; line-height: 14px; font-variant-numeric: tabular-nums; }
   .panel { max-height: 100%; overflow: auto; }
   .legend { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
-  /* ---- mobile (<= 360px wide). Must match IS_MOBILE in horde-v2.js, which sizes the grid
+  /* ---- mobile (<= 500px wide). Must match IS_MOBILE in horde-v2.js, which sizes the grid
      on load to fill the window below the HUD. */
-  @media (max-width: 360px) {
+  @media (max-width: 500px) {
     body { height: 100vh; height: 100dvh; }
     #app { width: 100vw; padding: 0; }
     h1, #help, .spacer { display: none; }
@@ -145,6 +146,7 @@
     <span class="legend"><span class="dot" style="background:#4a4fd8;width:14px;height:14px"></span>$25</span>
     <span class="legend"><span class="dot" style="background:#ff2a2a;width:10px;height:10px"></span>Gunner $50 (shoots towers)</span>
   </div>
+  <div id="dims"></div>
 </div>
 <script src="horde-v2.js"></script>
 </body>

@@ -8,17 +8,19 @@
 (() => {
   // ---------------------------------------------------------------- config
   // Must match the mobile @media query in horde-v2.html.
-  const IS_MOBILE = window.matchMedia('(max-width: 360px)').matches;
+  const IS_MOBILE = window.matchMedia('(max-width: 500px)').matches;
   const CELL = 24; // canvas px per cell; CSS scales the canvas to fit the window
   // Desktop: fixed 40 x 28 grid. Mobile: cells are twice the size a 40-column grid would have
-  // at 360px (18 CSS px), and the grid is sized on load to fill the window below the HUD.
+  // at 360px (18 CSS px), and the grid is sized on load to fill the window between the HUD
+  // and the screen-size footer.
   const MOBILE_CELL_CSS = 2 * 360 / 40;
   const [COLS, ROWS] = (() => {
     if (!IS_MOBILE) return [40, 28];
     const cols = Math.max(12, Math.floor(window.innerWidth / MOBILE_CELL_CSS));
     const cellCss = window.innerWidth / cols;
     const top = document.getElementById('stage').getBoundingClientRect().top;
-    return [cols, Math.max(16, Math.floor((window.innerHeight - top) / cellCss))];
+    const footer = document.getElementById('dims').offsetHeight;
+    return [cols, Math.max(16, Math.floor((window.innerHeight - top - footer) / cellCss))];
   })();
   const N = COLS * ROWS;
   const W = COLS * CELL, H = ROWS * CELL;
@@ -1091,23 +1093,23 @@
       appEl.style.width = Math.max(240, Math.floor(W * scale)) + 'px';
     }
   }
-  window.addEventListener('resize', fitToWindow);
+  // footer: current screen size and grid, handy when testing the mobile layout
+  function showDims() {
+    $('dims').textContent =
+      `Screen ${window.innerWidth} × ${window.innerHeight} · grid ${COLS} × ${ROWS}${IS_MOBILE ? ' · mobile' : ''}`;
+  }
+  window.addEventListener('resize', () => { fitToWindow(); showDims(); });
 
   // ================================================================ boot
   generateMap();
   computeFlow();
   drawBackground();
   showOverlay('Horde Tower Defence v2',
-    `<p>Hordes march down a winding corridor. They shove each other for space and can't leave the corridor.</p>
-     <p>Kills earn <b>$5–$25</b> by size (bigger = more), gunners <b>$50</b>. Towers cost <b>$${BASE_TOWER_COST}</b> on level 1,
-        increasing by <b>$${TOWER_COST_PER_LEVEL}</b> each level.
-        Each level you start with enough money for <b>level + 1</b> towers.</p>
-     <p>Reach <b>level × $${LEVEL_GOAL}</b> to clear a level. Don't let ${START_LIVES} enemies escape.</p>
-     <p>5 enemy sizes: small ones are fast but fragile, big ones are slow, tough and hit towers hard.
-        Red <b>gunners</b> shoot your towers as they pass.</p>
-     <p>Every ${WAVE_INTERVAL} seconds a wave of a single enemy type floods in.</p>
-     <p>Build towers anywhere. Inside the corridor they block the horde, but they take damage and can be destroyed.</p>`,
+    `<p>Hordes march down a winding corridor.</p>
+     <p>Click to place towers to stop them</p>
+     <p>Have Fun!</p>`,
     'Play', newGame);
+  showDims();
   fitToWindow();
   requestAnimationFrame(frame);
 })();
