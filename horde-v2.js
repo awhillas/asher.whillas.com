@@ -25,11 +25,10 @@
   const N = COLS * ROWS;
   const W = COLS * CELL, H = ROWS * CELL;
 
-  const BASE_TOWER_COST = 50;
-  const TOWER_COST_PER_LEVEL = 20;
-  const SELL_MIN_HEALTH = 0.8; // towers can only be sold at >= 80% health
-  const towerCost = (lvl = S.level) => BASE_TOWER_COST + TOWER_COST_PER_LEVEL * (lvl - 1);
-  const levelStartMoney = lvl => towerCost(lvl) * (lvl + 1); // exactly (level + 1) towers
+  const TOWER_COST = 50;                 // fixed on every level
+  const SELL_REFUND = TOWER_COST / 2;
+  const towerCost = () => TOWER_COST;
+  const levelStartMoney = lvl => TOWER_COST * (lvl + 1); // exactly (level + 1) towers
   const START_LIVES = 20;
   const LEVEL_GOAL = 1000;          // target = level * LEVEL_GOAL
   const MAX_ENEMIES = 450;
@@ -520,13 +519,8 @@
     if (!inB(cx, cy)) return;
     const t = towerAt[idx(cx, cy)];
     if (!t) return;
-    if (t.hp < t.maxHp * SELL_MIN_HEALTH) {
-      S.texts.push({ x: t.x, y: t.y - 0.3, text: 'Too damaged', life: 0.9, max: 0.9, color: '#ff6b6b' });
-      return;
-    }
-    const refund = Math.floor(t.cost / 2);
-    S.money += refund;
-    S.texts.push({ x: t.x, y: t.y - 0.3, text: '+$' + refund, life: 0.9, max: 0.9 });
+    S.money += SELL_REFUND;
+    S.texts.push({ x: t.x, y: t.y - 0.3, text: '+$' + SELL_REFUND, life: 0.9, max: 0.9 });
     removeTower(t, false);
   }
 
@@ -637,21 +631,10 @@
   }
 
   // ================================================================ waves
-  // Every WAVE_INTERVAL seconds a burst of a single random enemy type pours in,
-  // on top of the normal mixed trickle.
-  // Size types are equally likely; gunner waves start rare and become as likely as the
-  // others by level 5. The previous wave's type is never picked twice in a row.
-  function pickWaveType(prev) {
-    let total = 0;
-    const w = ENEMY_TYPES.map((T, k) => {
-      const v = k === prev ? 0 : T.gunner ? Math.min(1, 0.2 * S.level) : 1;
-      total += v;
-      return v;
-    });
-    let r = Math.random() * total;
-    for (let k = 0; k < w.length; k++) { if (w[k] > 0 && (r -= w[k]) <= 0) return k; }
-    return w.findLastIndex(v => v > 0);
-  }
+  // Every WAVE_INTERVAL seconds a burst of a single enemy type pours in, on top of the normal
+  // mixed trickle. Waves follow ENEMY_TYPES order: Tiny, Small, Medium, Large, Huge, Gunner,
+  // then repeat from Tiny. Each level starts again at Tiny.
+  const waveTypeFor = waveNum => (waveNum - 1) % ENEMY_TYPES.length;
 
   function updateWaves(dt) {
     S.waveTimer -= dt;
@@ -659,7 +642,7 @@
     if (S.waveTimer <= 0) {
       S.waveTimer += WAVE_INTERVAL;
       S.waveNum++;
-      S.waveType = pickWaveType(S.waveNum === 1 ? -1 : S.waveType);
+      S.waveType = waveTypeFor(S.waveNum);
       S.waveLeft += waveSize();
       S.waveMsgT = 2.5;
     }
@@ -888,13 +871,6 @@
       if (!t) {
         ctx.fillStyle = ok ? 'rgba(120,255,120,0.35)' : 'rgba(255,80,80,0.35)';
         ctx.fillRect(h.x * CELL, h.y * CELL, CELL, CELL);
-      } else {
-        // sell hint: gold outline if sellable, red if too damaged
-        const sellable = t.hp >= t.maxHp * SELL_MIN_HEALTH;
-        ctx.strokeStyle = sellable ? '#ffd54a' : '#ff4040';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(h.x * CELL + 1, h.y * CELL + 1, CELL - 2, CELL - 2);
-        ctx.lineWidth = 1;
       }
     }
 
@@ -1045,9 +1021,8 @@
       clearTimeout(hoverTimer);
       hoverTimer = setTimeout(() => { S.hover = null; }, 900);
     }
-    // clicking a tower sells it (if healthy enough); clicking an empty cell builds
-    if (inB(c.x, c.y) && towerAt[idx(c.x, c.y)]) sellTower(c.x, c.y);
-    else if (ev.button === 0) buildTower(c.x, c.y);
+    if (ev.button === 0) buildTower(c.x, c.y);
+    else if (ev.button === 2) sellTower(c.x, c.y);
   });
   canvas.addEventListener('contextmenu', ev => ev.preventDefault());
 
